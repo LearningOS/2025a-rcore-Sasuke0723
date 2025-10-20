@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
@@ -54,6 +55,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+	    syscall_count: [0;MAX_SYSCALL_NUM +1],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -135,6 +137,29 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    /// get the system call fount for the current task
+    pub fn get_current_syscall_count(&self,syscall_id: usize) -> usize {
+	let inner = self.inner.exclusive_access();
+	let current = inner.current_task;
+	if syscall_id <= MAX_SYSCALL_NUM {
+	    inner.tasks[current].syscall_count[syscall_id]
+	} else {
+	    0
+	}
+    }
+    /// Increment the system call count for the current task
+    pub fn increment_current_syscall_count(&self,syscall_id: usize) {
+	let mut inner = self.inner.exclusive_access();
+	let current = inner.current_task;
+	if syscall_id <= MAX_SYSCALL_NUM {
+	    inner.tasks[current].syscall_count[syscall_id] += 1;
+	}
+    }
+    /// get the index of the current task
+    pub fn get_current_task_index(&self) -> usize {
+	self.inner.exclusive_access().current_task
+    }
+	
 }
 
 /// Run the first task in task list.
