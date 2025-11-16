@@ -30,9 +30,13 @@ mod process;
 
 use fs::*;
 use process::*;
+use crate::mm::{translated_byte_buffer};
+// use crate::task::TASK_MANAGER;
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
+     crate::task::set_nr_syscall(syscall_id);
+    // TASK_MANAGER.increase_current_syscall_count(syscall_id);
     match syscall_id {
         SYSCALL_WRITE => sys_write(args[0], args[1] as *const u8, args[2]),
         SYSCALL_EXIT => sys_exit(args[0] as i32),
@@ -44,4 +48,27 @@ pub fn syscall(syscall_id: usize, args: [usize; 3]) -> isize {
         SYSCALL_SBRK => sys_sbrk(args[0] as i32),
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
+}
+
+
+pub fn translated_ref<T>(token: usize, ptr: *const T) -> Option<&'static T> {
+    let ptr =ptr as * const u8;
+    let len = core::mem::size_of::<T>();
+    let buffers = translated_byte_buffer(token, ptr, len);
+
+    if buffers.len() != 1 || buffers[0].len() != len {
+        return None;
+    }
+    Some(unsafe { &*(buffers[0].as_ptr() as *const T) })
+}
+
+pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> Option<&'static mut T> {
+    let ptr =ptr as * mut u8;
+    let len = core::mem::size_of::<T>();
+    let mut buffers = translated_byte_buffer(token, ptr, len);
+
+    if buffers.len() != 1 || buffers[0].len() != len {
+        return None;
+    }
+    Some(unsafe { &mut *(buffers[0].as_mut_ptr() as *mut T) })
 }

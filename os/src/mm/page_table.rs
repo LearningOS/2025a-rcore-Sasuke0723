@@ -179,3 +179,25 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     }
     v
 }
+/// Translate&Copy a ptr[T] to a immutable reference through page table
+pub fn translated_ref<T>(token: usize, ptr: *const T) -> Option<&'static T> {
+    let ptr =ptr as * const u8;
+    let len = core::mem::size_of::<T>();
+    let buffers = translated_byte_buffer(token, ptr, len);
+
+    if buffers.len() != 1 || buffers[0].len() != len {
+        return None;
+    }
+    Some(unsafe { &*(buffers[0].as_ptr() as *const T) })
+}
+/// Translate&Copy a ptr[T] to a mutable reference through page table
+pub fn translated_refmut<T>(token: usize, ptr: *mut T) -> Option<&'static mut T> {
+    let ptr =ptr as * mut u8;
+    let len = core::mem::size_of::<T>();
+    let mut buffers = translated_byte_buffer(token, ptr, len);
+
+    if buffers.len() != 1 || buffers[0].len() != len {
+        return None;
+    }
+    Some(unsafe { &mut *(buffers[0].as_mut_ptr() as *mut T) })
+}

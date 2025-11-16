@@ -51,6 +51,39 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
+     /// Check whether there is overlap with already mapped pages
+    pub fn check_mmap_area(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
+        for area in &self.areas {
+            if !(end_vpn <= area.vpn_range.get_start()
+                || start_vpn >= area.vpn_range.get_end())
+            {
+                return true;
+            }
+        }
+        false
+    }
+    /// Remove 
+    pub fn remove_framed_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va:VirtAddr,
+    ) -> isize {
+        if let Some(pos) = self
+            .areas
+            .iter()
+            .position(|area| {
+            area.vpn_range.get_start() == start_va.floor()
+                && area.vpn_range.get_end() == end_va.ceil()
+            })
+        {
+            let mut area = self.areas.remove(pos);
+            area.unmap(&mut self.page_table);
+            0
+        } else {
+            -1
+        }
+    }
+
     /// Assume that no conflicts.
     pub fn insert_framed_area(
         &mut self,
@@ -63,12 +96,23 @@ impl MemorySet {
             None,
         );
     }
-    fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
+    pub fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
         self.areas.push(map_area);
+    }
+    pub fn remove_area(&mut self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> isize {
+        if let Some(pos) = self.areas.iter().position(|area| {
+            area.vpn_range.get_start() == start_vpn && area.vpn_range.get_end() == end_vpn
+        }) {
+            let mut area = self.areas.remove(pos);
+            area.unmap(&mut self.page_table);
+            0
+        } else {
+            -1
+        }
     }
     /// Mention that trampoline is not collected by areas.
     fn map_trampoline(&mut self) {
@@ -261,6 +305,20 @@ impl MemorySet {
         } else {
             false
         }
+    }
+
+    pub fn unmap_range(&mut self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> isize {
+
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            if let Some(area) = self.areas.iter_mut().find(|area| {
+                vpn >= area.vpn_range.get_start() && end_vpn < area.vpn_range.get_end()
+            }){
+                area.unmap_one(&mut self.page_table, vpn);
+                area.data_frames.remove(&vpn);
+
+            }
+        }
+        0
     }
 }
 /// map area structure, controls a contiguous piece of virtual memory

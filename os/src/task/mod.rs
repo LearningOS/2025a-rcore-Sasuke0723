@@ -21,6 +21,8 @@ use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
+use crate::mm::{VirtAddr, MapPermission};
+
 
 pub use context::TaskContext;
 
@@ -153,6 +155,63 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+    // /// get the system call count of current task
+    // pub fn get_current_syscall_count(&self, syscall_id:usize) -> usize {
+    //     let inner = self.inner.exclusive_access();
+    //     let cur = inner.current_task;
+    //     inner.tasks[cur].syscall_count[syscall_id]
+    // }
+    // /// Increase the system call count of current task
+    // pub fn increase_current_syscall_count(&self, syscall_id:usize) {
+    //     let mut inner = self.inner.exclusive_access();
+    //     let cur = inner.current_task;
+    //     inner.tasks[cur].syscall_count[syscall_id] += 1;
+    // }
+
+    /// Get the number of a syscall by its id
+    pub fn get_nr_syscall(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        let nr_syscalls = inner.tasks[current_task].nr_syscalls[syscall_id];
+        drop(inner);
+        nr_syscalls
+    }
+    /// Record a syscall by its id
+    pub fn set_nr_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task;
+        if syscall_id >= inner.tasks[current_task].nr_syscalls.len() {
+            drop(inner);
+            return;
+        } else {
+            inner.tasks[current_task].nr_syscalls[syscall_id] += 1;
+        }
+        drop(inner);
+    }
+    /// Check whether there is overlap with already mapped pages
+    pub fn check_mmap_area(&self, start_va: VirtAddr, end_va: VirtAddr) -> bool {
+        let inner = self.inner.exclusive_access();
+        let current_task = inner.current_task; 
+        let res = inner.tasks[current_task].check_mmap_area(start_va, end_va);
+        drop(inner);
+        res
+    }
+    /// Add mmap area
+    pub fn add_mmap_area(&self, start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task; 
+        inner.tasks[current_task].add_mmap_area(start_va, end_va, perm);
+        drop(inner);
+    }
+
+    /// unmap area
+    pub fn remove_mmap_area(&self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current_task = inner.current_task; 
+        let res = inner.tasks[current_task].remove_mmap_area(start_va, end_va);
+        drop(inner); 
+        res
+    }
 }
 
 /// Run the first task in task list.
@@ -201,4 +260,21 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+
+// pub fn current_memory_set() -> Arc<UPSafeCell<MemorySet>> {
+//     let inner = TASK_MANAGER.inner.exclusive_access();
+//     let cur = inner.current_task;
+//     inner.tasks[cur].memory_set.clone()
+// }
+
+/// Get the number of a syscall by its id
+pub fn get_nr_syscall(syscall_id: usize) -> usize {
+    TASK_MANAGER.get_nr_syscall(syscall_id)
+}
+
+/// Set the number of a syscall by its id
+pub fn set_nr_syscall(syscall_id: usize) {
+    TASK_MANAGER.set_nr_syscall(syscall_id);
 }
