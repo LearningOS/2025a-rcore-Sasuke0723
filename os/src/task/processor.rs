@@ -5,12 +5,13 @@
 //! and the replacement and transfer of control flow of different applications are executed.
 
 use super::__switch;
-use super::{fetch_task, TaskStatus};
+use super::{fetch_task_by_stride, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
+use crate::mm::{MapPermission, VirtAddr};
 
 /// Processor management structure
 pub struct Processor {
@@ -55,7 +56,7 @@ lazy_static! {
 pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
-        if let Some(task) = fetch_task() {
+        if let Some(task) = fetch_task_by_stride() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
             // access coming task TCB exclusively
             let mut task_inner = task.inner_exclusive_access();
@@ -109,3 +110,29 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
 }
+///
+pub fn check_mmap_area(start_va: VirtAddr, end_va: VirtAddr) -> bool {
+    match current_task() {
+        Some(task) => {
+            let start_vpn = start_va.floor();
+            let end_vpn = end_va.floor();
+            task.inner_exclusive_access()
+                .memory_set
+                .check_mmap_area(start_vpn, end_vpn)
+        },
+        None => true,
+    }
+}
+///
+pub fn add_mmap_area(start_va: VirtAddr, end_va: VirtAddr, perm: MapPermission) -> isize {
+    match current_task() {
+        Some(task) => {
+            task.inner_exclusive_access()
+                .memory_set
+                .insert_framed_area(start_va.floor().into(), end_va.floor().into(), perm);
+            0
+        },
+        None => -1,
+    }
+}
+

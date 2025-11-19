@@ -68,6 +68,12 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// Stride for stride scheduling
+    pub stride: usize,
+
+    /// Priority for stride scheduling
+    pub priority: usize,
 }
 
 impl TaskControlBlockInner {
@@ -118,6 +124,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: 0,
+                    priority: 16,
                 })
             },
         };
@@ -131,6 +139,22 @@ impl TaskControlBlock {
             trap_handler as usize,
         );
         task_control_block
+    }
+    /// Spawn a new process
+    pub fn spawn(self: &Arc<Self>, elf_data: &[u8]) ->  isize{
+        let mut parent_inner = self.inner_exclusive_access();
+        let new_task = Arc::new(TaskControlBlock::new(elf_data));
+        let pid = new_task.pid.0;
+        // set parent
+        {
+            let mut new_inner = new_task.inner_exclusive_access();
+            new_inner.parent = Some(Arc::downgrade(self));
+        }
+        // add child
+        parent_inner.children.push(new_task.clone());
+        // add to ready queue
+        crate::task::add_task(new_task);
+        pid as isize
     }
 
     /// Load a new elf to replace the original application address space and start execution
@@ -191,6 +215,8 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: 0,
+                    priority: 16,
                 })
             },
         });
