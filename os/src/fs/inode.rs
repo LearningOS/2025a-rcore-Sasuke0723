@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
+use crate::fs::{Stat, StatMode};
 
 /// inode in memory
 /// A wrapper around a filesystem inode
@@ -124,6 +125,15 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
         })
     }
 }
+/// Link a file
+pub fn link_file(old_name: &str, new_name: &str) -> isize {
+    ROOT_INODE.create_link(old_name, new_name)
+}
+/// Unlink a file
+pub fn unlink_file(name: &str) -> isize {
+    ROOT_INODE.delete_link(name)
+}
+
 
 impl File for OSInode {
     fn readable(&self) -> bool {
@@ -155,5 +165,15 @@ impl File for OSInode {
             total_write_size += write_size;
         }
         total_write_size
+    }
+    fn get_stat(&self) -> Stat {
+        let inner = self.inner.exclusive_access();
+        let (inode_id, is_dir, nlink) = inner.inode.get_stat();
+        let mode = if is_dir {
+            StatMode::DIR
+        } else {
+            StatMode::FILE
+        };
+        Stat::new(0, inode_id as u64, mode, nlink as u32)
     }
 }

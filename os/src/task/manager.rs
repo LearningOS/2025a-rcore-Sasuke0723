@@ -25,6 +25,27 @@ impl TaskManager {
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.ready_queue.pop_front()
     }
+     ///
+    pub fn fetch_task_by_stride(&mut self) -> Option<Arc<TaskControlBlock>> {
+        if self.ready_queue.is_empty() {
+            return None;
+        }
+        let mut min_index = 0;
+        let mut min_stride = usize::MAX;
+        for (i, task) in self.ready_queue.iter().enumerate() {
+            let inner = task.inner_exclusive_access();
+            if inner.stride < min_stride {
+                min_stride = inner.stride;
+                min_index = i;
+            }
+        }
+        let task = self.ready_queue.remove(min_index).unwrap();
+        {
+            let mut inner = task.inner_exclusive_access();
+            inner.stride += 20000 / inner.priority;
+        }
+        Some(task)
+    }
 }
 
 lazy_static! {
@@ -43,4 +64,9 @@ pub fn add_task(task: Arc<TaskControlBlock>) {
 pub fn fetch_task() -> Option<Arc<TaskControlBlock>> {
     //trace!("kernel: TaskManager::fetch_task");
     TASK_MANAGER.exclusive_access().fetch()
+}
+///
+pub fn fetch_task_by_stride() -> Option<Arc<TaskControlBlock>> {
+    //trace!("kernel: TaskManager::fetch_task_by_stride");
+    TASK_MANAGER.exclusive_access().fetch_task_by_stride()
 }
